@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     command: ["--default_lua_flags=allow-undeclared-keys"]
     ports:
-      - "127.0.0.1:6380:6379"
+      - "127.0.0.1:6383:6379"
     volumes:
       - dragonfly-data:/data
     networks:
@@ -30,7 +30,7 @@ services:
       - ./configs:/etc/gomta:ro
     environment:
       # With host networking, dragonfly is reachable via its published port on localhost.
-      - GOMTA_CACHE_ADDR=127.0.0.1:6380
+      - GOMTA_CACHE_ADDR=127.0.0.1:6383
       - GOMTA_LISTEN=:7140
     command: ["--config-dir", "/etc/gomta"]
     healthcheck:
