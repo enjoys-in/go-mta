@@ -66,7 +66,11 @@ type ServerConfig struct {
 	RateLimitPerSec int `toml:"rate_limit_per_sec"`
 
 	// Retry
-	MaxRetries int `toml:"max_retries"`
+	MaxRetries    int      `toml:"max_retries"`
+	RetrySchedule []string `toml:"retry_schedule"` // e.g. ["1s", "5s", "5m"]
+
+	// IP family fallback: if IPv6 connect fails, retry with IPv4 (or vice versa)
+	IPFamilyFallback bool `toml:"ip_family_fallback"`
 
 	// Preflight
 	MaxMessageSize int `toml:"max_message_size"`
@@ -75,7 +79,7 @@ type ServerConfig struct {
 
 // LoadFile reads a TOML config file, then overlays environment variables.
 func LoadFile(path string) (*ServerConfig, error) {
-	cfg := &ServerConfig{}
+	cfg := &ServerConfig{IPFamilyFallback: true}
 	if _, err := toml.DecodeFile(path, cfg); err != nil {
 		return nil, fmt.Errorf("configloader: %w", err)
 	}
@@ -109,12 +113,12 @@ func LoadDir(dir string) (*ServerConfig, error) {
 
 	var cfg *ServerConfig
 	if mainCfgPath != "" {
-		cfg = &ServerConfig{}
+		cfg = &ServerConfig{IPFamilyFallback: true}
 		if _, err := toml.DecodeFile(mainCfgPath, cfg); err != nil {
 			return nil, fmt.Errorf("configloader: decode %s: %w", mainCfgPath, err)
 		}
 	} else {
-		cfg = &ServerConfig{}
+		cfg = &ServerConfig{IPFamilyFallback: true}
 	}
 
 	// Auto-discover ips.toml and domains.toml.
@@ -135,7 +139,7 @@ func LoadDir(dir string) (*ServerConfig, error) {
 
 // LoadEnv loads configuration purely from environment variables.
 func LoadEnv() *ServerConfig {
-	cfg := &ServerConfig{}
+	cfg := &ServerConfig{IPFamilyFallback: true}
 	cfg.applyEnv()
 	cfg.applyDefaults()
 	return cfg
@@ -188,6 +192,10 @@ func (c *ServerConfig) applyEnv() {
 	// Rate
 	envInt(&c.RateLimitPerSec, "GOMTA_RATE_LIMIT")
 	envInt(&c.MaxRetries, "GOMTA_MAX_RETRIES")
+	if v := os.Getenv("GOMTA_RETRY_SCHEDULE"); v != "" {
+		c.RetrySchedule = strings.Split(v, ",")
+	}
+	envBool(&c.IPFamilyFallback, "GOMTA_IP_FAMILY_FALLBACK")
 	envInt(&c.MaxMessageSize, "GOMTA_MAX_MESSAGE_SIZE")
 	envInt(&c.MaxRecipients, "GOMTA_MAX_RECIPIENTS")
 
@@ -229,6 +237,9 @@ func (c *ServerConfig) applyDefaults() {
 	}
 	if c.MaxRetries == 0 {
 		c.MaxRetries = 5
+	}
+	if len(c.RetrySchedule) == 0 {
+		c.RetrySchedule = []string{"1s", "5s", "5m"}
 	}
 	if c.MaxMessageSize == 0 {
 		c.MaxMessageSize = 25 * 1024 * 1024

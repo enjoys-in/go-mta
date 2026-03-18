@@ -126,11 +126,9 @@ func New(cfg *configloader.ServerConfig) (*Server, error) {
 	eh := events.NewHandler(1024)
 
 	// Retry
-	rs := retry.Strategy{
-		MaxAttempts: cfg.MaxRetries,
-		BaseDelay:   5 * time.Second,
-		MaxDelay:    10 * time.Minute,
-		Multiplier:  2.0,
+	rs, err := retry.ParseSchedule(cfg.RetrySchedule)
+	if err != nil {
+		return nil, fmt.Errorf("server: %w", err)
 	}
 
 	s := &Server{

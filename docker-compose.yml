@@ -4,6 +4,8 @@ services:
     container_name: gomta-dragonfly
     restart: unless-stopped
     command: ["--default_lua_flags=allow-undeclared-keys"]
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - dragonfly-data:/data
     networks:
@@ -21,12 +23,14 @@ services:
     depends_on:
       dragonfly:
         condition: service_healthy
-    ports:
-      - "7140:7140"
+    # Host network: container shares the host's network stack so it can
+    # bind to the server's public IP for outbound SMTP delivery.
+    network_mode: host
     volumes:
       - ./configs:/etc/gomta:ro
     environment:
-      - GOMTA_CACHE_ADDR=dragonfly:6379
+      # With host networking, dragonfly is reachable via its published port on localhost.
+      - GOMTA_CACHE_ADDR=127.0.0.1:6379
       - GOMTA_LISTEN=:7140
     command: ["--config-dir", "/etc/gomta"]
     healthcheck:
@@ -35,11 +39,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    networks:
-      - gomta-net
-    # Use host network mode instead if you need to bind to specific
-    # public IPs for outbound SMTP delivery:
-    # network_mode: host
 
 volumes:
   dragonfly-data:

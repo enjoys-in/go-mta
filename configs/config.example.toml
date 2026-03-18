@@ -5,7 +5,7 @@ local_ips = ["0.0.0.0"]
 
 # IP lookup strategy:
 # Ipv4Only, Ipv6Only, Ipv4AndIpv6, Ipv4ThenIpv6, Ipv6ThenIpv4
-ip_lookup_strategy = "Ipv4ThenIpv6"
+ip_lookup_strategy = "Ipv4Only"
 
 # Relay settings
 relay_host = "localhost"
@@ -46,8 +46,13 @@ queue_workers = 4
 # Rate limiting
 rate_limit_per_sec = 10
 
-# Retry
-max_retries = 5
+# Retry schedule: each entry is the delay before the Nth retry
+# len(schedule) = max retries; first attempt has no delay
+retry_schedule = ["1s", "5s", "5m"]
+
+# IP family fallback: if IPv6 bind fails, retry with IPv4 (and vice versa)
+# Enabled by default
+ip_family_fallback = true
 
 # Preflight
 max_message_size = 26214400

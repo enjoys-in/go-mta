@@ -193,6 +193,38 @@ func (s *Server) deliverDomains(ctx context.Context, msg *types.Message, job *ty
 					return mtacore.Send(ctx, msg.From, chunk, localIP, domainCfg, msg.Data)
 				})
 				totalAttempts += attempts
+
+				// IP family fallback: if bind failed and fallback is enabled,
+				// resolve MX IPs compatible with opposite family and retry unbound.
+				if err != nil && s.cfg.IPFamilyFallback && isBindError(err) && len(mxHostnames) > 0 {
+					s.log.Warn("bind failed, trying IP family fallback",
+						slog.String("job_id", msg.ID),
+						slog.String("domain", domain),
+						slog.String("original_ip", localIP),
+						slog.String("error", err.Error()),
+					)
+					fallbackIPs, unbind, resolveErr := s.resolver.ResolveCompatible(ctx, mxHostnames[0], localIP)
+					if resolveErr == nil && len(fallbackIPs) > 0 {
+						fbIP := localIP
+						if unbind {
+							fbIP = "" // let OS pick
+						}
+						fbCfg := s.buildMTAConfig(fbIP)
+						fbCfg.MXHosts = mxHostnames
+						fbCfg.Method = method
+
+						fbAttempts, fbErr := s.retrier.Do(ctx, msg.ID, func() error {
+							return mtacore.Send(ctx, msg.From, chunk, fbIP, fbCfg, msg.Data)
+						})
+						totalAttempts += fbAttempts
+						if fbErr == nil {
+							err = nil
+						} else {
+							err = fbErr
+						}
+					}
+				}
+
 				if err != nil {
 					lastErr = err
 				}
@@ -264,4 +296,16 @@ func (s *Server) handleDeliveryResult(msg *types.Message, job *types.Job, dr del
 			Attempt: dr.attempts, Meta: map[string]string{"domain": dr.domain},
 		})
 	}
+}
+
+// isBindError returns true if the error is a "bind: cannot assign requested address"
+// or similar, indicating the source IP can't reach the target address family.
+func isBindError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "bind: cannot assign requested address") ||
+		strings.Contains(msg, "bind: address not available") ||
+		strings.Contains(msg, "connect: network is unreachable")
 }

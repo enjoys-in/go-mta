@@ -2,33 +2,46 @@ package retry
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
-	"math"
 	"time"
 
 	"github.com/enjoys-in/go-mta/pkg/logger"
 	"github.com/enjoys-in/go-mta/pkg/types"
 )
 
-// Strategy defines retry behaviour.
+// Strategy defines retry behaviour via an explicit delay schedule.
+// Each entry in Schedule is the wait time before the Nth retry.
+// len(Schedule) determines the maximum number of retries.
 type Strategy struct {
-	MaxAttempts int
-	BaseDelay   time.Duration
-	MaxDelay    time.Duration
-	Multiplier  float64
+	Schedule []time.Duration
 }
+
+// DefaultSchedule is used when no schedule is configured: 1s, 5s, 5m.
+var DefaultSchedule = []time.Duration{1 * time.Second, 5 * time.Second, 5 * time.Minute}
 
 // DefaultStrategy returns sensible retry defaults.
 func DefaultStrategy() Strategy {
-	return Strategy{
-		MaxAttempts: types.DefaultMaxRetries,
-		BaseDelay:   5 * time.Second,
-		MaxDelay:    10 * time.Minute,
-		Multiplier:  2.0,
-	}
+	return Strategy{Schedule: DefaultSchedule}
 }
 
-// Retrier executes a function with exponential backoff.
+// ParseSchedule converts string durations (e.g. "1s", "5m") into a Strategy.
+func ParseSchedule(entries []string) (Strategy, error) {
+	if len(entries) == 0 {
+		return DefaultStrategy(), nil
+	}
+	schedule := make([]time.Duration, len(entries))
+	for i, s := range entries {
+		d, err := time.ParseDuration(s)
+		if err != nil {
+			return Strategy{}, fmt.Errorf("retry: invalid schedule entry %q: %w", s, err)
+		}
+		schedule[i] = d
+	}
+	return Strategy{Schedule: schedule}, nil
+}
+
+// Retrier executes a function with schedule-based retries.
 type Retrier struct {
 	strategy Strategy
 	log      *logger.Logger
@@ -42,21 +55,27 @@ func New(s Strategy) *Retrier {
 	}
 }
 
-// Do runs fn until it succeeds, context is cancelled, or max attempts exhausted.
+// MaxAttempts returns 1 (initial) + len(Schedule) retries.
+func (r *Retrier) MaxAttempts() int {
+	return 1 + len(r.strategy.Schedule)
+}
+
+// Do runs fn until it succeeds, context is cancelled, or schedule exhausted.
 // Returns the last error and the number of attempts made.
 func (r *Retrier) Do(ctx context.Context, jobID string, fn func() error) (int, error) {
+	maxAttempts := r.MaxAttempts()
 	var lastErr error
-	for attempt := 1; attempt <= r.strategy.MaxAttempts; attempt++ {
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		lastErr = fn()
 		if lastErr == nil {
 			return attempt, nil
 		}
 
-		if attempt == r.strategy.MaxAttempts {
+		if attempt == maxAttempts {
 			break
 		}
 
-		delay := r.backoff(attempt)
+		delay := r.strategy.Schedule[attempt-1]
 
 		r.log.Warn("retrying",
 			slog.String("job_id", jobID),
@@ -72,15 +91,7 @@ func (r *Retrier) Do(ctx context.Context, jobID string, fn func() error) (int, e
 		}
 	}
 
-	return r.strategy.MaxAttempts, lastErr
-}
-
-func (r *Retrier) backoff(attempt int) time.Duration {
-	delay := float64(r.strategy.BaseDelay) * math.Pow(r.strategy.Multiplier, float64(attempt-1))
-	if delay > float64(r.strategy.MaxDelay) {
-		delay = float64(r.strategy.MaxDelay)
-	}
-	return time.Duration(delay)
+	return maxAttempts, lastErr
 }
 
 // ShouldRetry returns true if the SMTP error is transient (4xx).
