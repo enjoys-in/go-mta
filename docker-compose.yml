@@ -1,0 +1,48 @@
+services:
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly
+    container_name: gomta-dragonfly
+    restart: unless-stopped
+    command: ["--default_lua_flags=allow-undeclared-keys"]
+    volumes:
+      - dragonfly-data:/data
+    networks:
+      - gomta-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  gomta:
+    build: .
+    container_name: gomta
+    restart: unless-stopped
+    depends_on:
+      dragonfly:
+        condition: service_healthy
+    ports:
+      - "7145:7145"
+    volumes:
+      - ./configs:/etc/gomta:ro
+    environment:
+      - GOMTA_CACHE_ADDR=dragonfly:6379
+    command: ["--config-dir", "/etc/gomta", "--listen", ":7145"]
+    healthcheck:
+      test: ["CMD", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - gomta-net
+    # Use host network mode instead if you need to bind to specific
+    # public IPs for outbound SMTP delivery:
+    # network_mode: host
+
+volumes:
+  dragonfly-data:
+
+networks:
+  gomta-net:
+    driver: bridge
