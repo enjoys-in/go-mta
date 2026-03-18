@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/enjoys-in/go-mta/internal/api"
 	"github.com/enjoys-in/go-mta/pkg/configloader"
 	"github.com/enjoys-in/go-mta/pkg/events"
 	"github.com/enjoys-in/go-mta/pkg/logger"
@@ -18,6 +19,7 @@ import (
 func main() {
 	cfgPath := flag.String("config", "", "path to TOML config file")
 	cfgDir := flag.String("config-dir", "", "path to TOML config directory (loads ips.toml, domains.toml, etc.)")
+	listen := flag.String("listen", ":8080", "HTTP API listen address")
 	flag.Parse()
 
 	log := logger.New("main")
@@ -66,9 +68,19 @@ func main() {
 	defer stop()
 
 	srv.Start(ctx)
+
+	// Start HTTP API.
+	httpAPI := api.New(srv, *listen)
+	go func() {
+		if err := httpAPI.ListenAndServe(); err != nil {
+			log.Error("API server error", err)
+		}
+	}()
+
 	log.Info("gomta running. Waiting for signals...")
 
 	<-ctx.Done()
 	log.Info("signal received, shutting down...")
+	httpAPI.Shutdown(context.Background())
 	srv.Shutdown(context.Background())
 }

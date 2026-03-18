@@ -47,6 +47,7 @@ type Limits struct {
 // Rule represents a domain-specific delivery rule from domains.toml.
 type Rule struct {
 	Domain                     string `toml:"domain" json:"domain"`
+	DeliveryMethod             string `toml:"delivery_method" json:"delivery_method"`
 	ConnectionLimit            int    `toml:"connection_limit" json:"connection_limit"`
 	MaxDeliveriesPerConnection int    `toml:"max_deliveries_per_connection" json:"max_deliveries_per_connection"`
 	MaxMessageRate             string `toml:"max_message_rate" json:"max_message_rate"`

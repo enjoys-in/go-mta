@@ -30,6 +30,7 @@ type ServerConfig struct {
 	RelayUser string `toml:"relay_user"`
 	RelayPass string `toml:"relay_pass"`
 	RelayTLS  bool   `toml:"relay_tls"`
+	RelayAuth bool   `toml:"relay_auth"`
 
 	// Direct
 	DirectPort    int    `toml:"direct_port"`
@@ -150,6 +151,7 @@ func (c *ServerConfig) applyEnv() {
 	envStr(&c.RelayUser, "GOMTA_RELAY_USER")
 	envStr(&c.RelayPass, "GOMTA_RELAY_PASS")
 	envBool(&c.RelayTLS, "GOMTA_RELAY_TLS")
+	envBool(&c.RelayAuth, "GOMTA_RELAY_AUTH")
 
 	// Direct
 	envInt(&c.DirectPort, "GOMTA_DIRECT_PORT")

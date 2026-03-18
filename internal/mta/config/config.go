@@ -12,6 +12,7 @@ type Config struct {
 	RelayUser string
 	RelayPass string
 	RelayTLS  bool
+	RelayAuth bool
 
 	// --- Direct delivery settings ---
 	DirectPort    int

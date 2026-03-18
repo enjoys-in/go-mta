@@ -58,8 +58,8 @@ func (r *Relay) Deliver(from string, to []string, localIP string, cfg config.Con
 	}
 	defer c.Close()
 
-	// Authenticate if credentials are provided.
-	if cfg.RelayUser != "" {
+	// Authenticate only when explicitly enabled via RelayAuth.
+	if cfg.RelayAuth && cfg.RelayUser != "" {
 		auth := sasl.NewPlainClient("", cfg.RelayUser, cfg.RelayPass)
 		if err := c.Auth(auth); err != nil {
 			return fmt.Errorf("relay: auth: %w", err)
