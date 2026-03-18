@@ -27,4 +27,8 @@
 # ehlo_domain = "mail2.example.com"
 # warmup = true
 
-# No sources defined - MTA will auto-detect from OS network interfaces
+[[sources]]
+name = "primary"
+ip = "192.168.1.36"
+weight = 1
+ehlo_domain = "mail.enjoys.in"

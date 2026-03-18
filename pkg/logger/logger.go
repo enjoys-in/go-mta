@@ -49,9 +49,11 @@ func (l *Logger) Info(msg string, attrs ...slog.Attr) {
 
 // Error logs at ERROR level with automatic stack capture.
 func (l *Logger) Error(msg string, err error, attrs ...slog.Attr) {
-	a := append(attrs, slog.String("error", err.Error()))
-	a = append(a, slog.String("stack", captureStack(3)))
-	l.log(context.Background(), slog.LevelError, msg, a)
+	if err != nil {
+		attrs = append(attrs, slog.String("error", err.Error()))
+	}
+	attrs = append(attrs, slog.String("stack", captureStack(3)))
+	l.log(context.Background(), slog.LevelError, msg, attrs)
 }
 
 // Warn logs at WARN level.
