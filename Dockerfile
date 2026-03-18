@@ -11,7 +11,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /gomta ./cmd/gomta
 
 # Build a tiny healthcheck binary
-RUN printf 'package main\nimport("net/http";"os")\nfunc main(){r,e:=http.Get("http://localhost:7145/api/v1/health");if e!=nil||r.StatusCode!=200{os.Exit(1)}}' > /tmp/hc.go && \
+RUN printf 'package main\\nimport(\"net/http\";\"os\")\\nfunc main(){r,e:=http.Get(\"http://localhost:7140/api/v1/health\");if e!=nil||r.StatusCode!=200{os.Exit(1)}}' > /tmp/hc.go && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /healthcheck /tmp/hc.go
 
 # Runtime stage
@@ -21,7 +21,7 @@ COPY --from=builder /gomta /usr/local/bin/gomta
 COPY --from=builder /healthcheck /usr/local/bin/healthcheck
 COPY configs/ /etc/gomta/
 
-EXPOSE 7145
+EXPOSE 7140
 
 ENTRYPOINT ["gomta"]
 CMD ["--config-dir", "/etc/gomta"]

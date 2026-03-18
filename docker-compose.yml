@@ -22,12 +22,13 @@ services:
       dragonfly:
         condition: service_healthy
     ports:
-      - "7145:7145"
+      - "7140:7140"
     volumes:
       - ./configs:/etc/gomta:ro
     environment:
       - GOMTA_CACHE_ADDR=dragonfly:6379
-    command: ["--config-dir", "/etc/gomta", "--listen", ":7145"]
+      - GOMTA_LISTEN=:7140
+    command: ["--config-dir", "/etc/gomta"]
     healthcheck:
       test: ["CMD", "healthcheck"]
       interval: 15s

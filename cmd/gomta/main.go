@@ -19,8 +19,12 @@ import (
 func main() {
 	cfgPath := flag.String("config", "", "path to TOML config file")
 	cfgDir := flag.String("config-dir", "", "path to TOML config directory (loads ips.toml, domains.toml, etc.)")
-	listen := flag.String("listen", ":7145", "HTTP API listen address")
+	listen := flag.String("listen", ":7140", "HTTP API listen address")
 	flag.Parse()
+
+	if v := os.Getenv("GOMTA_LISTEN"); v != "" {
+		*listen = v
+	}
 
 	log := logger.New("main")
 
