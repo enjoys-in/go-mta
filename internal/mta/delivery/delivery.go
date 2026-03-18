@@ -1,7 +1,7 @@
 package delivery
 
 import (
-	"github.com/enjoys-in/go-mta/config"
+	"github.com/enjoys-in/go-mta/internal/mta/config"
 )
 
 // Adapter is the common interface every delivery method must implement.

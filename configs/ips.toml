@@ -1,0 +1,30 @@
+# UnoSend MTA - IP Sources Configuration
+#
+# Define your sending IP addresses here.
+# If this file is empty or no sources are defined, the MTA will
+# automatically detect and use the server's network interfaces.
+#
+# Format:
+# [[sources]]
+# name = "mail1"              # Unique identifier
+# ip = "198.51.100.1"         # IPv4 or IPv6 address
+# weight = 1                  # Load balancing weight (optional, default: 1)
+# ehlo_domain = "mail.example.com"  # EHLO hostname (optional)
+# warmup = false              # Is this IP in warmup mode? (optional)
+#
+# Example:
+#
+# [[sources]]
+# name = "primary"
+# ip = "198.51.100.1"
+# weight = 2
+# ehlo_domain = "mail1.example.com"
+
+# [[sources]]
+# name = "secondary"
+# ip = "127.0.0.1"
+# weight = 1
+# ehlo_domain = "mail2.example.com"
+# warmup = true
+
+# No sources defined - MTA will auto-detect from OS network interfaces

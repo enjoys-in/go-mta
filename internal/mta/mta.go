@@ -18,8 +18,8 @@ package mta
 import (
 	"fmt"
 
-	"github.com/enjoys-in/go-mta/config"
-	"github.com/enjoys-in/go-mta/delivery"
+	"github.com/enjoys-in/go-mta/internal/mta/config"
+	"github.com/enjoys-in/go-mta/internal/mta/delivery"
 )
 
 // Send delivers an email using the adapter specified by cfg.Method.

@@ -1,0 +1,42 @@
+Critical / High Priority
+No context.Context support — No way to cancel or set deadlines on deliveries. Every adapter should accept a context.Context as the first parameter.
+
+No retry / backoff mechanism — A single failed delivery attempt is final. MTA systems typically retry with exponential backoff (especially for 4xx temp failures).
+
+No DKIM signing — Most receiving servers will reject or spam-folder messages without DKIM. Needs a hook or built-in signing step before delivery.
+
+No SPF/DMARC awareness — No validation or alignment checks on the sending side.
+
+No connection timeout on relay adapter — The relay dialer has no Timeout set, so it can hang indefinitely. Direct adapter sets one, relay does not.
+
+No logging / observability — No logger interface, no hooks for metrics, no delivery event callbacks. You're flying blind in production.
+
+Medium Priority
+No connection pooling — Every Deliver() call dials a new TCP connection. For high-volume relay sending, a persistent connection pool would be essential.
+
+No rate limiting — No per-domain or per-IP throttling to avoid being blocked by receiving servers.
+
+No queue / async delivery — Everything is synchronous. A production MTA needs a queue (disk or in-memory) for deferred messages.
+
+No bounce / DSN handling — No mechanism to parse or generate Delivery Status Notifications (RFC 3464).
+
+Only PLAIN auth on relay — sasl.NewPlainClient is hardcoded. Should support LOGIN, CRAM-MD5, XOAUTH2, etc. based on config.
+
+No config loader — Config struct exists but there's no TOML/env/YAML parser. You mentioned TOML support in the spec.
+
+No TLS certificate pinning or skip-verify option — Some relay setups need InsecureSkipVerify or custom CA certs.
+
+Lower Priority / Nice-to-Have
+No tests — Zero unit or integration tests for any adapter.
+
+No README — No usage documentation beyond the godoc comment in mta.go.
+
+Direct adapter doesn't handle per-recipient failures gracefully — If one RCPT fails, the inner loop continues but doesn't break out of the MX attempt properly (the error is lost).
+
+No message size limit checking — No pre-flight check against the server's SIZE extension.
+
+No IP rotation — localIP is a single string. Multi-IP sending setups need rotation strategies.
+
+No webhook auth on HTTP adapter — No Bearer token, API key, or HMAC signature support beyond raw headers.
+
+No graceful shutdown — No way to drain in-flight deliveries before process exit.

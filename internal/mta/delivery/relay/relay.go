@@ -9,8 +9,8 @@ import (
 
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
-	"github.com/enjoys-in/go-mta/config"
-	"github.com/enjoys-in/go-mta/delivery"
+	"github.com/enjoys-in/go-mta/internal/mta/config"
+	"github.com/enjoys-in/go-mta/internal/mta/delivery"
 )
 
 const adapterName = "relay"

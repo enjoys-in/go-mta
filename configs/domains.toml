@@ -1,0 +1,114 @@
+# UnoSend MTA - Provider-Specific Domain Rules
+#
+# This file contains provider-specific delivery settings for major email providers.
+# Format: [domains.<identifier>] where identifier is a unique name.
+# The 'domain' field is the actual pattern: exact match, ".suffix", or "*"
+
+# Default for unlisted domains
+[domains.default]
+domain = "*"
+connection_limit = 32
+max_deliveries_per_connection = 5
+max_message_rate = "50/m"
+ip_pool = "default"
+delivery_method = "direct"
+
+# Google (Gmail, Google Workspace)
+[domains.gmail]
+domain = ".gmail.com"
+connection_limit = 10
+max_deliveries_per_connection = 10
+max_message_rate = "40/m"
+ip_pool = "default"
+
+[domains.gmail.warmup]
+enabled = true
+schedule = [
+  { day = 1,  max = 200 },
+  { day = 2,  max = 500 },
+  { day = 3,  max = 1000 },
+  { day = 7,  max = 5000 },
+  { day = 14, max = 20000 },
+  { day = 30, max = 100000 },
+]
+
+[domains.gmail.limits]
+max_concurrent_conns = 3
+max_msgs_per_conn = 50
+msgs_per_minute = 100
+max_daily_per_ip = 500
+connection_timeout = "30s"
+greet_delay = "100ms"
+retry_on_421 = true
+retry_backoff_sec = 300
+
+[domains.googlemail]
+domain = ".googlemail.com"
+connection_limit = 10
+max_deliveries_per_connection = 10
+max_message_rate = "40/m"
+
+# Microsoft (Outlook, Hotmail, Live, Office 365)
+[domains.outlook]
+domain = ".outlook.com"
+connection_limit = 10
+max_deliveries_per_connection = 40
+max_message_rate = "200/m"
+
+[domains.hotmail]
+domain = ".hotmail.com"
+connection_limit = 10
+max_deliveries_per_connection = 40
+max_message_rate = "200/m"
+
+[domains.live]
+domain = ".live.com"
+connection_limit = 10
+max_deliveries_per_connection = 40
+max_message_rate = "200/m"
+
+[domains.office365]
+domain = ".office365.com"
+connection_limit = 10
+max_deliveries_per_connection = 40
+max_message_rate = "200/m"
+
+# Yahoo / AOL / Verizon
+[domains.yahoo]
+domain = ".yahoo.com"
+connection_limit = 5
+max_deliveries_per_connection = 20
+max_message_rate = "100/m"
+ip_lookup_strategy = "Ipv4Only"
+
+[domains.yahoo_jp]
+domain = ".yahoo.co.jp"
+connection_limit = 5
+max_deliveries_per_connection = 20
+max_message_rate = "100/m"
+
+[domains.aol]
+domain = ".aol.com"
+connection_limit = 5
+max_deliveries_per_connection = 20
+max_message_rate = "100/m"
+
+# Apple (iCloud, me.com)
+[domains.icloud]
+domain = ".icloud.com"
+connection_limit = 10
+max_deliveries_per_connection = 30
+max_message_rate = "150/m"
+
+[domains.me]
+domain = ".me.com"
+connection_limit = 10
+max_deliveries_per_connection = 30
+max_message_rate = "150/m"
+
+# Comcast / Xfinity
+[domains.comcast]
+domain = ".comcast.net"
+connection_limit = 5
+max_deliveries_per_connection = 25
+max_message_rate = "100/m"

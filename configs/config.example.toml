@@ -1,0 +1,50 @@
+# gomta configuration
+
+method = "direct"
+local_ips = ["0.0.0.0"]
+
+# IP lookup strategy:
+# Ipv4Only, Ipv6Only, Ipv4AndIpv6, Ipv4ThenIpv6, Ipv6ThenIpv4
+ip_lookup_strategy = "Ipv4ThenIpv6"
+
+# Relay settings
+relay_host = ""
+relay_port = 587
+relay_user = ""
+relay_pass = ""
+relay_tls = false
+
+# Direct delivery
+direct_port = 25
+direct_helo = "localhost"
+direct_tls = false
+direct_timeout = 30
+
+# HTTP injection
+http_url = ""
+http_method = "POST"
+http_timeout = 30
+
+# TLS
+tls_insecure_skip_verify = false
+tls_ca_cert_file = ""
+
+# Dragonfly / Redis cache
+cache_addr = "127.0.0.1:6379"
+cache_user = ""   # optional, leave empty if Redis has no ACL user
+cache_pass = ""
+cache_db = 0
+
+# Queue
+queue_size = 10000
+queue_workers = 4
+
+# Rate limiting
+rate_limit_per_sec = 10
+
+# Retry
+max_retries = 5
+
+# Preflight
+max_message_size = 26214400
+max_recipients = 100
