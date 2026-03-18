@@ -16,6 +16,10 @@ type Cache interface {
 	Incr(ctx context.Context, key string) (int64, error)
 	Expire(ctx context.Context, key string, ttl time.Duration) error
 	Del(ctx context.Context, keys ...string) error
+	HSet(ctx context.Context, key string, values ...any) error
+	HGetAll(ctx context.Context, key string) (map[string]string, error)
+	SMembers(ctx context.Context, key string) ([]string, error)
+	SAdd(ctx context.Context, key string, members ...any) error
 	Close() error
 }
 
@@ -65,6 +69,22 @@ func (d *DragonflyCache) Expire(ctx context.Context, key string, ttl time.Durati
 
 func (d *DragonflyCache) Del(ctx context.Context, keys ...string) error {
 	return d.client.Del(ctx, keys...).Err()
+}
+
+func (d *DragonflyCache) HSet(ctx context.Context, key string, values ...any) error {
+	return d.client.HSet(ctx, key, values...).Err()
+}
+
+func (d *DragonflyCache) HGetAll(ctx context.Context, key string) (map[string]string, error) {
+	return d.client.HGetAll(ctx, key).Result()
+}
+
+func (d *DragonflyCache) SMembers(ctx context.Context, key string) ([]string, error) {
+	return d.client.SMembers(ctx, key).Result()
+}
+
+func (d *DragonflyCache) SAdd(ctx context.Context, key string, members ...any) error {
+	return d.client.SAdd(ctx, key, members...).Err()
 }
 
 func (d *DragonflyCache) Close() error {

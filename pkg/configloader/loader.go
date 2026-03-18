@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -25,12 +26,13 @@ type ServerConfig struct {
 	IPLookupStrategy string `toml:"ip_lookup_strategy"` // Ipv4Only, Ipv6Only, Ipv4AndIpv6, Ipv4ThenIpv6, Ipv6ThenIpv4
 
 	// Relay
-	RelayHost string `toml:"relay_host"`
-	RelayPort int    `toml:"relay_port"`
-	RelayUser string `toml:"relay_user"`
-	RelayPass string `toml:"relay_pass"`
-	RelayTLS  bool   `toml:"relay_tls"`
-	RelayAuth bool   `toml:"relay_auth"`
+	RelayHost    string `toml:"relay_host"`
+	RelayPort    int    `toml:"relay_port"`
+	RelayUser    string `toml:"relay_user"`
+	RelayPass    string `toml:"relay_pass"`
+	RelayTLS     bool   `toml:"relay_tls"`
+	RelayAuth    bool   `toml:"relay_auth"`
+	RelayTimeout int    `toml:"relay_timeout"`
 
 	// Direct
 	DirectPort    int    `toml:"direct_port"`
@@ -39,10 +41,12 @@ type ServerConfig struct {
 	DirectTimeout int    `toml:"direct_timeout"`
 
 	// HTTP
-	HTTPURL     string            `toml:"http_url"`
-	HTTPMethod  string            `toml:"http_method"`
-	HTTPHeaders map[string]string `toml:"http_headers"`
-	HTTPTimeout int               `toml:"http_timeout"`
+	HTTPURL        string            `toml:"http_url"`
+	HTTPMethod     string            `toml:"http_method"`
+	HTTPHeaders    map[string]string `toml:"http_headers"`
+	HTTPTimeout    int               `toml:"http_timeout"`
+	HTTPAuthType   string            `toml:"http_auth_type"`
+	HTTPAuthSecret string            `toml:"http_auth_secret"`
 
 	// TLS
 	TLSInsecureSkipVerify bool   `toml:"tls_insecure_skip_verify"`
@@ -152,6 +156,7 @@ func (c *ServerConfig) applyEnv() {
 	envStr(&c.RelayPass, "GOMTA_RELAY_PASS")
 	envBool(&c.RelayTLS, "GOMTA_RELAY_TLS")
 	envBool(&c.RelayAuth, "GOMTA_RELAY_AUTH")
+	envInt(&c.RelayTimeout, "GOMTA_RELAY_TIMEOUT")
 
 	// Direct
 	envInt(&c.DirectPort, "GOMTA_DIRECT_PORT")
@@ -163,6 +168,8 @@ func (c *ServerConfig) applyEnv() {
 	envStr(&c.HTTPURL, "GOMTA_HTTP_URL")
 	envStr(&c.HTTPMethod, "GOMTA_HTTP_METHOD")
 	envInt(&c.HTTPTimeout, "GOMTA_HTTP_TIMEOUT")
+	envStr(&c.HTTPAuthType, "GOMTA_HTTP_AUTH_TYPE")
+	envStr(&c.HTTPAuthSecret, "GOMTA_HTTP_AUTH_SECRET")
 
 	// TLS
 	envBool(&c.TLSInsecureSkipVerify, "GOMTA_TLS_INSECURE_SKIP_VERIFY")
@@ -194,10 +201,10 @@ func (c *ServerConfig) applyEnv() {
 
 func (c *ServerConfig) applyDefaults() {
 	if c.Method == "" {
-		c.Method = "direct"
+		c.Method = "relay"
 	}
 	if c.RelayPort == 0 {
-		c.RelayPort = 587
+		c.RelayPort = 25
 	}
 	if c.DirectPort == 0 {
 		c.DirectPort = 25
@@ -215,7 +222,7 @@ func (c *ServerConfig) applyDefaults() {
 		c.QueueSize = 10000
 	}
 	if c.QueueWorkers == 0 {
-		c.QueueWorkers = 4
+		c.QueueWorkers = runtime.NumCPU()
 	}
 	if c.RateLimitPerSec == 0 {
 		c.RateLimitPerSec = 10
@@ -230,7 +237,7 @@ func (c *ServerConfig) applyDefaults() {
 		c.MaxRecipients = 100
 	}
 	if c.IPLookupStrategy == "" {
-		c.IPLookupStrategy = "Ipv4Only"
+		c.IPLookupStrategy = "Ipv4AndIpv6"
 	}
 }
 

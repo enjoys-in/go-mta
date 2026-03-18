@@ -2,6 +2,10 @@ package http
 
 import (
 	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	nethttp "net/http"
@@ -27,7 +31,7 @@ type HTTP struct{}
 
 func (h *HTTP) Name() string { return adapterName }
 
-func (h *HTTP) Deliver(from string, to []string, localIP string, cfg config.Config, data []byte) error {
+func (h *HTTP) Deliver(ctx context.Context, from string, to []string, localIP string, cfg config.Config, data []byte) error {
 	if cfg.HTTPURL == "" {
 		return fmt.Errorf("http: HTTPURL is required in config")
 	}
@@ -42,7 +46,7 @@ func (h *HTTP) Deliver(from string, to []string, localIP string, cfg config.Conf
 		timeout = 30 * time.Second
 	}
 
-	req, err := nethttp.NewRequest(method, cfg.HTTPURL, bytes.NewReader(data))
+	req, err := nethttp.NewRequestWithContext(ctx, method, cfg.HTTPURL, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("http: build request: %w", err)
 	}
@@ -55,6 +59,17 @@ func (h *HTTP) Deliver(from string, to []string, localIP string, cfg config.Conf
 	// Apply extra headers from config.
 	for k, v := range cfg.HTTPHeaders {
 		req.Header.Set(k, v)
+	}
+
+	// Apply auth based on HTTPAuthType.
+	switch strings.ToLower(cfg.HTTPAuthType) {
+	case "bearer":
+		req.Header.Set("Authorization", "Bearer "+cfg.HTTPAuthSecret)
+	case "hmac-sha256":
+		mac := hmac.New(sha256.New, []byte(cfg.HTTPAuthSecret))
+		mac.Write(data)
+		sig := hex.EncodeToString(mac.Sum(nil))
+		req.Header.Set("X-Signature-256", "sha256="+sig)
 	}
 
 	client := &nethttp.Client{Timeout: timeout}

@@ -7,24 +7,32 @@ type Config struct {
 	Method string
 
 	// --- Relay settings ---
-	RelayHost string
-	RelayPort int
-	RelayUser string
-	RelayPass string
-	RelayTLS  bool
-	RelayAuth bool
+	RelayHost    string
+	RelayPort    int
+	RelayUser    string
+	RelayPass    string
+	RelayTLS     bool
+	RelayAuth    bool
+	RelayTimeout int // seconds (0 = 30s default)
 
 	// --- Direct delivery settings ---
 	DirectPort    int
 	DirectHELO    string
 	DirectTLS     bool
-	DirectTimeout int // seconds
+	DirectTimeout int      // seconds
+	MXHosts       []string // pre-resolved MX hostnames (pipeline provides these)
 
 	// --- HTTP delivery settings ---
-	HTTPURL     string
-	HTTPMethod  string // POST, PUT
-	HTTPHeaders map[string]string
-	HTTPTimeout int // seconds
+	HTTPURL        string
+	HTTPMethod     string // POST, PUT
+	HTTPHeaders    map[string]string
+	HTTPTimeout    int    // seconds
+	HTTPAuthType   string // "bearer", "hmac-sha256", "" (none)
+	HTTPAuthSecret string // token for bearer, secret key for HMAC
+
+	// --- TLS ---
+	TLSSkipVerify bool   // skip certificate verification
+	TLSCAFile     string // path to custom CA certificate file
 
 	// --- General ---
 	// Extra key-value pairs for custom adapter needs

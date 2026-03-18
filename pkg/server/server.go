@@ -59,9 +59,9 @@ func New(cfg *configloader.ServerConfig) (*Server, error) {
 		DB:       cfg.CacheDB,
 	})
 
-	// Resolver (IP lookup strategy)
+	// Resolver (IP lookup strategy) — receives cache for MX record caching.
 	strategy := resolver.ParseStrategy(cfg.IPLookupStrategy)
-	res := resolver.New(strategy, 0)
+	res := resolver.New(strategy, 0, c)
 
 	// Load IP pool from TOML (if configured), cache in Dragonfly.
 	var ips *ippool.Pool
@@ -148,8 +148,13 @@ func New(cfg *configloader.ServerConfig) (*Server, error) {
 		log:       logger.New(types.ComponentServer),
 	}
 
-	// Queue — worker func is the delivery pipeline.
-	s.queue = queue.New(cfg.QueueSize, cfg.QueueWorkers, s.processJob)
+	// Queue — worker func is the delivery pipeline (asynq-backed via Dragonfly/Redis).
+	s.queue = queue.New(queue.RedisConfig{
+		Addr:     cfg.CacheAddr,
+		Username: cfg.CacheUser,
+		Password: cfg.CachePassword,
+		DB:       cfg.CacheDB,
+	}, cfg.QueueWorkers, s.processJob)
 
 	return s, nil
 }
@@ -187,6 +192,10 @@ func (s *Server) Start(ctx context.Context) {
 
 	go s.events.Dispatch()
 	s.queue.Start(ctx)
+
+	// Start the MX cache refresh cron (every 12 hours).
+	s.resolver.StartRefreshCron(ctx)
+
 	s.log.Info("server started",
 		slog.String("method", s.cfg.Method),
 		slog.Int("workers", s.cfg.QueueWorkers),

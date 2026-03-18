@@ -55,6 +55,9 @@ func (s *Server) Submit(from string, to []string, data []byte) (string, error) {
 		types.ReleaseJob(job)
 		return "", fmt.Errorf("server: queue full")
 	}
+
+	// Job was serialised into Redis; release pool objects.
+	types.ReleaseJob(job)
 	return msg.ID, nil
 }
 

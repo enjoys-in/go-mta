@@ -8,11 +8,13 @@ local_ips = ["0.0.0.0"]
 ip_lookup_strategy = "Ipv4ThenIpv6"
 
 # Relay settings
-relay_host = ""
-relay_port = 587
+relay_host = "localhost"
+relay_port = 25
 relay_user = ""
 relay_pass = ""
 relay_tls = false
+relay_auth = false
+relay_timeout = 30   # seconds (0 = 30s default)
 
 # Direct delivery
 direct_port = 25
@@ -24,6 +26,8 @@ direct_timeout = 30
 http_url = ""
 http_method = "POST"
 http_timeout = 30
+http_auth_type = ""       # "bearer", "hmac-sha256", or "" (none)
+http_auth_secret = ""     # token for bearer, secret key for HMAC
 
 # TLS
 tls_insecure_skip_verify = false

@@ -2,10 +2,14 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
+	"time"
 
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
@@ -26,7 +30,7 @@ type Relay struct{}
 
 func (r *Relay) Name() string { return adapterName }
 
-func (r *Relay) Deliver(from string, to []string, localIP string, cfg config.Config, data []byte) error {
+func (r *Relay) Deliver(ctx context.Context, from string, to []string, localIP string, cfg config.Config, data []byte) error {
 	addr := net.JoinHostPort(cfg.RelayHost, strconv.Itoa(cfg.RelayPort))
 
 	// Build a custom dialer bound to the specified local IP.
@@ -34,14 +38,23 @@ func (r *Relay) Deliver(from string, to []string, localIP string, cfg config.Con
 	if err != nil {
 		return fmt.Errorf("relay: resolve local IP: %w", err)
 	}
-	dialer := &net.Dialer{LocalAddr: localAddr}
 
-	conn, err := dialer.Dial("tcp", addr)
+	timeout := time.Duration(cfg.RelayTimeout) * time.Second
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	dialer := &net.Dialer{LocalAddr: localAddr, Timeout: timeout}
+
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("relay: dial %s: %w", addr, err)
 	}
 
-	tlsCfg := &tls.Config{ServerName: cfg.RelayHost}
+	tlsCfg, err := buildTLSConfig(cfg.RelayHost, cfg.TLSSkipVerify, cfg.TLSCAFile)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("relay: tls config: %w", err)
+	}
 
 	var c *smtp.Client
 	if cfg.RelayTLS {
@@ -89,4 +102,24 @@ func (r *Relay) Deliver(from string, to []string, localIP string, cfg config.Con
 	}
 
 	return c.Quit()
+}
+
+// buildTLSConfig creates a *tls.Config honouring skip-verify and custom CA.
+func buildTLSConfig(serverName string, skipVerify bool, caFile string) (*tls.Config, error) {
+	cfg := &tls.Config{
+		ServerName:         serverName,
+		InsecureSkipVerify: skipVerify,
+	}
+	if caFile != "" {
+		pem, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("read CA file: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("invalid CA certificate in %s", caFile)
+		}
+		cfg.RootCAs = pool
+	}
+	return cfg, nil
 }

@@ -141,32 +141,64 @@ func (s *Server) deliverDomains(ctx context.Context, msg *types.Message, job *ty
 		go func(domain string, rcpts []string) {
 			defer wg.Done()
 
+			// Resolve MX hosts (cached via Dragonfly).
 			localIP := msg.LocalIP
 			mxHosts, _ := s.resolver.LookupMX(ctx, domain)
+			var mxHostnames []string
 			if len(mxHosts) > 0 {
 				localIP = s.pickSourceIP(ctx, mxHosts[0].Host)
-			}
-
-			domainCfg := s.buildMTAConfig(localIP)
-
-			method := job.Method
-			if s.domains != nil {
-				if rule := s.domains.Match(domain); rule != nil && rule.DeliveryMethod != "" {
-					method = rule.DeliveryMethod
-					domainCfg.Method = method
+				for _, mx := range mxHosts {
+					mxHostnames = append(mxHostnames, mx.Host)
 				}
 			}
 
-			s.events.Emit(events.Event{
-				Type: types.EventDeliveryAttempt, Timestamp: time.Now(),
-				JobID: msg.ID, From: msg.From, LocalIP: localIP, Method: method, Attempt: 1,
-			})
+			domainCfg := s.buildMTAConfig(localIP)
+			domainCfg.MXHosts = mxHostnames
 
-			attempts, err := s.retrier.Do(ctx, msg.ID, func() error {
-				return mtacore.Send(msg.From, rcpts, localIP, domainCfg, msg.Data)
-			})
+			method := job.Method
+			maxPerConn := 5 // default
+			if s.domains != nil {
+				if rule := s.domains.Match(domain); rule != nil {
+					if rule.DeliveryMethod != "" {
+						method = rule.DeliveryMethod
+						domainCfg.Method = method
+					}
+					if rule.MaxDeliveriesPerConnection > 0 {
+						maxPerConn = rule.MaxDeliveriesPerConnection
+					}
+				}
+			}
 
-			resCh <- deliveryResult{domain: domain, localIP: localIP, method: method, err: err, attempts: attempts}
+			// Chunk recipients by maxPerConn and deliver with throttle between rounds.
+			chunks := chunkSlice(rcpts, maxPerConn)
+
+			var lastErr error
+			var totalAttempts int
+			for i, chunk := range chunks {
+				if i > 0 {
+					select {
+					case <-ctx.Done():
+						resCh <- deliveryResult{domain: domain, localIP: localIP, method: method, err: ctx.Err(), attempts: totalAttempts}
+						return
+					case <-time.After(1 * time.Second):
+					}
+				}
+
+				s.events.Emit(events.Event{
+					Type: types.EventDeliveryAttempt, Timestamp: time.Now(),
+					JobID: msg.ID, From: msg.From, LocalIP: localIP, Method: method, Attempt: i + 1,
+				})
+
+				attempts, err := s.retrier.Do(ctx, msg.ID, func() error {
+					return mtacore.Send(ctx, msg.From, chunk, localIP, domainCfg, msg.Data)
+				})
+				totalAttempts += attempts
+				if err != nil {
+					lastErr = err
+				}
+			}
+
+			resCh <- deliveryResult{domain: domain, localIP: localIP, method: method, err: lastErr, attempts: totalAttempts}
 		}(domain, rcpts)
 	}
 
@@ -176,6 +208,22 @@ func (s *Server) deliverDomains(ctx context.Context, msg *types.Message, job *ty
 	}()
 
 	return resCh
+}
+
+// chunkSlice splits a slice into chunks of at most size n.
+func chunkSlice(s []string, n int) [][]string {
+	if n <= 0 {
+		n = len(s)
+	}
+	var chunks [][]string
+	for i := 0; i < len(s); i += n {
+		end := i + n
+		if end > len(s) {
+			end = len(s)
+		}
+		chunks = append(chunks, s[i:end])
+	}
+	return chunks
 }
 
 func (s *Server) handleDeliveryResult(msg *types.Message, job *types.Job, dr deliveryResult, errs *[]string) {

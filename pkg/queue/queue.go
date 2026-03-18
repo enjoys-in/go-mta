@@ -2,108 +2,189 @@ package queue
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
-	"sync"
+	"time"
+
+	"github.com/hibiken/asynq"
 
 	"github.com/enjoys-in/go-mta/pkg/logger"
 	"github.com/enjoys-in/go-mta/pkg/types"
 )
 
+const (
+	// TypeDelivery is the asynq task type for email delivery jobs.
+	TypeDelivery = "email:deliver"
+)
+
 // WorkerFunc processes a job. Return error to signal failure.
 type WorkerFunc func(ctx context.Context, job *types.Job) error
 
-// Queue is a bounded, in-memory async delivery queue with a worker pool.
-type Queue struct {
-	jobs    chan *types.Job
-	workers int
-	fn      WorkerFunc
-	log     *logger.Logger
-	wg      sync.WaitGroup
-	cancel  context.CancelFunc
+// jobPayload is the JSON-serialised form stored in Redis.
+type jobPayload struct {
+	ID         string    `json:"id"`
+	From       string    `json:"from"`
+	To         []string  `json:"to"`
+	LocalIP    string    `json:"local_ip"`
+	Data       []byte    `json:"data"`
+	Method     string    `json:"method"`
+	MaxRetries int       `json:"max_retries"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
-// New creates a queue. bufSize is the channel capacity, workers is concurrency.
-func New(bufSize int, workers int, fn WorkerFunc) *Queue {
-	if bufSize <= 0 {
-		bufSize = types.DefaultQueueSize
-	}
+// Queue wraps asynq client (enqueue) and server (dequeue + process).
+type Queue struct {
+	client *asynq.Client
+	server *asynq.Server
+	mux    *asynq.ServeMux
+	fn     WorkerFunc
+	log    *logger.Logger
+}
+
+// RedisConfig holds the connection details for the asynq broker.
+type RedisConfig struct {
+	Addr     string
+	Username string
+	Password string
+	DB       int
+}
+
+// New creates an asynq-backed queue.
+// workers is the server concurrency; queueSize is used for strict queue capacity.
+func New(redisCfg RedisConfig, workers int, fn WorkerFunc) *Queue {
 	if workers <= 0 {
 		workers = types.DefaultQueueWorkers
 	}
-	return &Queue{
-		jobs:    make(chan *types.Job, bufSize),
-		workers: workers,
-		fn:      fn,
-		log:     logger.New(types.ComponentQueue),
+
+	redisOpt := asynq.RedisClientOpt{
+		Addr:     redisCfg.Addr,
+		Username: redisCfg.Username,
+		Password: redisCfg.Password,
+		DB:       redisCfg.DB,
 	}
+
+	client := asynq.NewClient(redisOpt)
+
+	srv := asynq.NewServer(redisOpt, asynq.Config{
+		Concurrency: workers,
+		Queues:      map[string]int{"default": 1},
+		RetryDelayFunc: func(n int, _ error, _ *asynq.Task) time.Duration {
+			// Exponential backoff: 5s, 10s, 20s, 40s, ...
+			d := time.Duration(1<<uint(n)) * 5 * time.Second
+			if d > 10*time.Minute {
+				d = 10 * time.Minute
+			}
+			return d
+		},
+		Logger: newAsynqLogger(),
+	})
+
+	q := &Queue{
+		client: client,
+		server: srv,
+		mux:    asynq.NewServeMux(),
+		fn:     fn,
+		log:    logger.New(types.ComponentQueue),
+	}
+	q.mux.HandleFunc(TypeDelivery, q.handleTask)
+	return q
 }
 
-// Start launches the worker pool. Call Stop() to shut down.
-func (q *Queue) Start(parentCtx context.Context) {
-	ctx, cancel := context.WithCancel(parentCtx)
-	q.cancel = cancel
-
-	for i := 0; i < q.workers; i++ {
-		q.wg.Add(1)
-		go q.worker(ctx, i)
-	}
-	q.log.Info("queue started",
-		slog.Int("workers", q.workers),
-		slog.Int("buffer", cap(q.jobs)),
-	)
+// Start launches the asynq worker server (non-blocking).
+func (q *Queue) Start(_ context.Context) {
+	go func() {
+		if err := q.server.Run(q.mux); err != nil {
+			q.log.Error("asynq server error", err)
+		}
+	}()
+	q.log.Info("asynq queue started")
 }
 
-// Enqueue adds a job to the queue. Returns false if the queue is full.
+// Enqueue serialises a Job and pushes it into the asynq broker.
 func (q *Queue) Enqueue(job *types.Job) bool {
-	select {
-	case q.jobs <- job:
-		return true
-	default:
-		q.log.Warn("queue full, dropping job",
-			slog.String("job_id", job.Message.ID),
-		)
+	payload, err := json.Marshal(jobPayload{
+		ID:         job.Message.ID,
+		From:       job.Message.From,
+		To:         job.Message.To,
+		LocalIP:    job.Message.LocalIP,
+		Data:       job.Message.Data,
+		Method:     job.Method,
+		MaxRetries: job.MaxRetries,
+		CreatedAt:  job.CreatedAt,
+	})
+	if err != nil {
+		q.log.Error("failed to marshal job", err, slog.String("job_id", job.Message.ID))
 		return false
 	}
-}
 
-// Len returns the number of jobs currently buffered.
-func (q *Queue) Len() int {
-	return len(q.jobs)
-}
+	task := asynq.NewTask(TypeDelivery, payload,
+		asynq.MaxRetry(job.MaxRetries),
+		asynq.Queue("default"),
+		asynq.TaskID(job.Message.ID),
+		asynq.Retention(24*time.Hour),
+	)
 
-// Stop signals all workers to finish and waits for drain.
-func (q *Queue) Stop() {
-	q.cancel()
-	close(q.jobs)
-	q.wg.Wait()
-	q.log.Info("queue stopped")
-}
-
-func (q *Queue) worker(ctx context.Context, id int) {
-	defer q.wg.Done()
-	for {
-		select {
-		case job, ok := <-q.jobs:
-			if !ok {
-				return // channel closed
-			}
-			if err := q.fn(ctx, job); err != nil {
-				q.log.Error("worker job failed", err,
-					slog.Int("worker_id", id),
-					slog.String("job_id", job.Message.ID),
-				)
-			}
-		case <-ctx.Done():
-			// Drain remaining jobs in channel before exit.
-			for job := range q.jobs {
-				if err := q.fn(context.Background(), job); err != nil {
-					q.log.Error("drain job failed", err,
-						slog.Int("worker_id", id),
-						slog.String("job_id", job.Message.ID),
-					)
-				}
-			}
-			return
-		}
+	if _, err := q.client.Enqueue(task); err != nil {
+		q.log.Error("failed to enqueue", err, slog.String("job_id", job.Message.ID))
+		return false
 	}
+	return true
+}
+
+// Stop shuts down both client and server.
+func (q *Queue) Stop() {
+	q.server.Shutdown()
+	q.client.Close()
+	q.log.Info("asynq queue stopped")
+}
+
+// handleTask is the asynq handler that deserialises the payload and calls the WorkerFunc.
+func (q *Queue) handleTask(ctx context.Context, t *asynq.Task) error {
+	var p jobPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return fmt.Errorf("queue: unmarshal payload: %w", err)
+	}
+
+	msg := types.AcquireMessage()
+	msg.ID = p.ID
+	msg.From = p.From
+	msg.To = append(msg.To, p.To...)
+	msg.LocalIP = p.LocalIP
+	msg.Data = append(msg.Data, p.Data...)
+	msg.Size = len(p.Data)
+	msg.CreatedAt = p.CreatedAt
+
+	job := types.AcquireJob()
+	job.Message = msg
+	job.Method = p.Method
+	job.MaxRetries = p.MaxRetries
+	job.CreatedAt = p.CreatedAt
+
+	return q.fn(ctx, job)
+}
+
+// asynqLogAdapter wraps slog for asynq's Logger interface.
+type asynqLogAdapter struct {
+	log *logger.Logger
+}
+
+func newAsynqLogger() *asynqLogAdapter {
+	return &asynqLogAdapter{log: logger.New(types.ComponentQueue)}
+}
+
+func (a *asynqLogAdapter) Debug(args ...interface{}) {
+	a.log.Debug(fmt.Sprint(args...))
+}
+func (a *asynqLogAdapter) Info(args ...interface{}) {
+	a.log.Info(fmt.Sprint(args...))
+}
+func (a *asynqLogAdapter) Warn(args ...interface{}) {
+	a.log.Warn(fmt.Sprint(args...))
+}
+func (a *asynqLogAdapter) Error(args ...interface{}) {
+	a.log.Error(fmt.Sprint(args...), nil)
+}
+func (a *asynqLogAdapter) Fatal(args ...interface{}) {
+	a.log.Error(fmt.Sprint(args...), nil)
 }

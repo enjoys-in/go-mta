@@ -12,10 +12,11 @@
 // Then call mta.Send():
 //
 //	cfg := config.Config{Method: "direct", ...}
-//	err := mta.Send("sender@example.com", []string{"rcpt@example.com"}, "1.2.3.4", cfg, rawMsg)
+//	err := mta.Send(ctx, "sender@example.com", []string{"rcpt@example.com"}, "1.2.3.4", cfg, rawMsg)
 package mta
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/enjoys-in/go-mta/internal/mta/config"
@@ -24,12 +25,13 @@ import (
 
 // Send delivers an email using the adapter specified by cfg.Method.
 //
+//	ctx     – context for cancellation and deadlines
 //	from    – envelope sender address
 //	to      – envelope recipient addresses
 //	localIP – local IP address to bind for outbound connections
 //	cfg     – delivery configuration (method, credentials, etc.)
 //	data    – raw RFC-5322 message bytes
-func Send(from string, to []string, localIP string, cfg config.Config, data []byte) error {
+func Send(ctx context.Context, from string, to []string, localIP string, cfg config.Config, data []byte) error {
 	if cfg.Method == "" {
 		return fmt.Errorf("mta: config.Method is required")
 	}
@@ -41,15 +43,15 @@ func Send(from string, to []string, localIP string, cfg config.Config, data []by
 	if err != nil {
 		return err
 	}
-	return adapter.Deliver(from, to, localIP, cfg, data)
+	return adapter.Deliver(ctx, from, to, localIP, cfg, data)
 }
 
 // SendWith delivers using a specific, pre-created adapter.
-func SendWith(adapter delivery.Adapter, from string, to []string, localIP string, cfg config.Config, data []byte) error {
+func SendWith(ctx context.Context, adapter delivery.Adapter, from string, to []string, localIP string, cfg config.Config, data []byte) error {
 	if localIP == "" {
 		return fmt.Errorf("mta: localIP is required")
 	}
-	return adapter.Deliver(from, to, localIP, cfg, data)
+	return adapter.Deliver(ctx, from, to, localIP, cfg, data)
 }
 
 // Available returns the names of all registered delivery adapters.
